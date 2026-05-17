@@ -1,5 +1,5 @@
-import { PageStub } from "@/components/layout/PageStub";
+import { InterviewPrepPage } from "@/components/interview/interview-prep-page";
 
 export default function InterviewPage() {
-  return <PageStub title="Interview Prep" />;
+  return <InterviewPrepPage />;
 }
