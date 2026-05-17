@@ -9,7 +9,9 @@ export const classicTemplate = String.raw`\documentclass[11pt,a4paper]{article}
 
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage[parskip]{parskip}
+\usepackage{parskip}
+\setlength{\parskip}{6pt} % Space between paragraphs
+\setlength{\parindent}{0pt} % No indentation at the start of paragraphs
 \usepackage[margin=0.75in]{geometry}
 \usepackage{enumitem}
 \usepackage{titlesec}
@@ -73,7 +75,9 @@ export const modernTemplate = String.raw`\documentclass[11pt,a4paper]{article}
 
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage[parskip]{parskip}
+\usepackage{parskip}
+\setlength{\parskip}{6pt} % Space between paragraphs
+\setlength{\parindent}{0pt} % No indentation at the start of paragraphs
 \usepackage[margin=0.6in]{geometry}
 \usepackage{enumitem}
 \usepackage{titlesec}
@@ -154,7 +158,9 @@ export const minimalTemplate = String.raw`\documentclass[11pt,a4paper]{article}
 
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage[parskip]{parskip}
+\usepackage{parskip}
+\setlength{\parskip}{6pt} % Space between paragraphs
+\setlength{\parindent}{0pt} % No indentation at the start of paragraphs
 \usepackage[margin=1in]{geometry}
 \usepackage{enumitem}
 \usepackage{titlesec}
@@ -203,7 +209,9 @@ export const atsSafeTemplate = String.raw`\documentclass[11pt,a4paper]{article}
 
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage[parskip]{parskip}
+\usepackage{parskip}
+\setlength{\parskip}{6pt} % Space between paragraphs
+\setlength{\parindent}{0pt} % No indentation at the start of paragraphs
 \usepackage[margin=0.75in]{geometry}
 \usepackage{enumitem}
 \usepackage{titlesec}
@@ -274,7 +282,9 @@ export const technicalTemplate = String.raw`\documentclass[11pt,a4paper]{article
 
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
-\usepackage[parskip]{parskip}
+\usepackage{parskip}
+\setlength{\parskip}{6pt} % Space between paragraphs
+\setlength{\parindent}{0pt} % No indentation at the start of paragraphs
 \usepackage[margin=0.75in]{geometry}
 \usepackage{enumitem}
 \usepackage{titlesec}
