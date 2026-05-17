@@ -1,5 +1,5 @@
-import { PageStub } from "@/components/layout/PageStub";
+import { GeneratePage } from "@/components/generate/generate-page";
 
-export default function GeneratePage() {
-  return <PageStub title="AI Generate" />;
+export default function GenerateRoutePage() {
+  return <GeneratePage />;
 }
