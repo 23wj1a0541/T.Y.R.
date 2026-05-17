@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import {
   ArrowRight,
+  ClipboardCopy,
   Download,
   FileText,
   Loader2,
+  Mail,
   Save,
   Sparkles,
 } from "lucide-react";
@@ -17,6 +19,14 @@ import { LatexDiffView } from "@/components/tailor/latex-diff-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -33,6 +43,7 @@ import {
   downloadPdfBlob,
   sanitizeResumeFilename,
 } from "@/lib/compile-latex";
+import { resumeContentToPlainText } from "@/lib/interview-utils";
 import { createEmptyResumeContent } from "@/lib/resume-content";
 import { sanitizeGeneratedLatex } from "@/lib/sanitize-latex";
 import { createClient } from "@/lib/supabase/client";
@@ -67,6 +78,8 @@ type JdAnalysis = {
 
 const TAILORED_RESUME_TITLE = "Tailored Resume";
 
+const COVER_LETTER_TONES = ["Professional", "Enthusiastic", "Casual"] as const;
+
 function jobLevelBadgeClass(level: JobLevel) {
   switch (level) {
     case "Junior":
@@ -100,11 +113,21 @@ export function TailorPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isOpeningEditor, setIsOpeningEditor] = useState(false);
 
+  const [isCoverLetterModalOpen, setIsCoverLetterModalOpen] = useState(false);
+  const [selectedTone, setSelectedTone] = useState("Professional");
+  const [generatedCoverLetter, setGeneratedCoverLetter] = useState("");
+  const [isLetterStreaming, setIsLetterStreaming] = useState(false);
+
   const selectedResume = savedResumes.find((r) => r.id === selectedResumeId);
   const isComplete = tailoredResumeLatex.length > 0 && !isProcessing;
   const showJdInsights = Boolean(jdAnalysis);
   const isBusy =
-    isProcessing || isAnalyzing || isExporting || isSaving || isOpeningEditor;
+    isProcessing ||
+    isAnalyzing ||
+    isExporting ||
+    isSaving ||
+    isOpeningEditor ||
+    isLetterStreaming;
 
   const loadResumes = useCallback(async () => {
     setLoadingResumes(true);
@@ -428,6 +451,74 @@ export function TailorPage() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleGenerateCoverLetter = async () => {
+    if (!jobDescription.trim()) {
+      toast.error("Paste a job description first");
+      return;
+    }
+
+    if (!tailoredResumeLatex.trim()) {
+      toast.error("Tailor a resume before generating a cover letter");
+      return;
+    }
+
+    setIsLetterStreaming(true);
+    setGeneratedCoverLetter("");
+
+    try {
+      const userProfile = await fetchUserProfile();
+      const resumeText = resumeContentToPlainText(
+        undefined,
+        sanitizeGeneratedLatex(tailoredResumeLatex),
+      );
+
+      let accumulated = "";
+
+      await streamSsePost(
+        "/api/cover-letter",
+        {
+          resumeText,
+          jobDescription: jobDescription.trim(),
+          userProfile,
+          tone: selectedTone,
+        },
+        (chunk) => {
+          accumulated += chunk;
+          setGeneratedCoverLetter(accumulated);
+        },
+      );
+
+      if (!accumulated.trim()) {
+        throw new Error("Cover letter generation returned empty content");
+      }
+
+      toast.success("Cover letter ready");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Cover letter generation failed";
+      toast.error(message);
+    } finally {
+      setIsLetterStreaming(false);
+    }
+  };
+
+  const handleCopyCoverLetter = async () => {
+    if (!generatedCoverLetter.trim()) return;
+
+    try {
+      await navigator.clipboard.writeText(generatedCoverLetter);
+      toast.success("Cover letter copied");
+    } catch {
+      toast.error("Could not copy to clipboard");
+    }
+  };
+
+  const openCoverLetterModal = () => {
+    setGeneratedCoverLetter("");
+    setSelectedTone("Professional");
+    setIsCoverLetterModalOpen(true);
   };
 
   const handleExportPdf = async () => {
@@ -763,12 +854,104 @@ export function TailorPage() {
                     )}
                     Save as New Version
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={openCoverLetterModal}
+                    disabled={isBusy}
+                    className="border-violet-200 text-violet-700 hover:bg-violet-50"
+                  >
+                    <Mail className="size-3.5" />
+                    Generate Cover Letter
+                  </Button>
                 </div>
               )}
             </div>
           </div>
         </div>
       </div>
+
+      <Dialog
+        open={isCoverLetterModalOpen}
+        onOpenChange={setIsCoverLetterModalOpen}
+      >
+        <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Generate Cover Letter</DialogTitle>
+            <DialogDescription>
+              Personalized to your tailored resume, job description, and profile.
+              Choose a tone and generate.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4 overflow-y-auto py-2">
+            <div className="space-y-2">
+              <Label>Copywriting tone</Label>
+              <Select
+                value={selectedTone}
+                onValueChange={setSelectedTone}
+                disabled={isLetterStreaming}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {COVER_LETTER_TONES.map((tone) => (
+                    <SelectItem key={tone} value={tone}>
+                      {tone}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="cover-letter-output">Cover letter</Label>
+              <Textarea
+                id="cover-letter-output"
+                value={generatedCoverLetter}
+                onChange={(e) => setGeneratedCoverLetter(e.target.value)}
+                placeholder={
+                  isLetterStreaming
+                    ? "Writing your cover letter…"
+                    : "Click Generate to draft your letter"
+                }
+                className="min-h-[320px] resize-y leading-relaxed"
+                readOnly={isLetterStreaming}
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 border-t pt-4 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => void handleCopyCoverLetter()}
+              disabled={!generatedCoverLetter.trim() || isLetterStreaming}
+              className="gap-2"
+            >
+              <ClipboardCopy className="size-4" />
+              Copy
+            </Button>
+            <Button
+              onClick={() => void handleGenerateCoverLetter()}
+              disabled={isLetterStreaming}
+              className="gap-2 bg-violet-600 hover:bg-violet-700"
+            >
+              {isLetterStreaming ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="size-4" />
+                  {generatedCoverLetter ? "Regenerate" : "Generate"}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Bottom bar */}
       <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3">
