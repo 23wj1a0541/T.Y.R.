@@ -53,6 +53,8 @@ export type ResumeContent = {
   education: Education[];
   projects: Project[];
   skills: Skill[];
+  /** Full LaTeX source stored by the resume editor */
+  latexSource?: string;
 };
 
 /** Row shape for `public.user_profiles` */
@@ -115,6 +117,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Omit<UserProfile, "id">>;
+        Relationships: [];
       };
       resumes: {
         Row: Resume;
@@ -124,6 +127,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Omit<Resume, "id" | "user_id">>;
+        Relationships: [];
       };
       job_applications: {
         Row: JobApplication;
@@ -133,6 +137,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: Partial<Omit<JobApplication, "id" | "user_id">>;
+        Relationships: [];
       };
     };
     Views: Record<string, never>;

@@ -145,7 +145,7 @@ export default function DashboardPage() {
   const today = format(new Date(), "EEEE, MMMM d, yyyy");
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-8 px-8 py-8">
+    <div className="mx-auto h-full w-full max-w-6xl space-y-8 overflow-y-auto px-8 py-8">
       <header>
         <h2 className="text-2xl font-semibold tracking-tight text-slate-900">
           {getGreeting()}! Ready to land your next job?
