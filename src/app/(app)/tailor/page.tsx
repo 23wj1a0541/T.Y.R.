@@ -1,5 +1,5 @@
-import { PageStub } from "@/components/layout/PageStub";
+import { TailorPage } from "@/components/tailor/tailor-page";
 
-export default function TailorPage() {
-  return <PageStub title="Tailor for Job" />;
+export default function TailorRoutePage() {
+  return <TailorPage />;
 }
