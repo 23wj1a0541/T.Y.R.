@@ -37,6 +37,7 @@ import { createEmptyResumeContent } from "@/lib/resume-content";
 import { sanitizeGeneratedLatex } from "@/lib/sanitize-latex";
 import { createClient } from "@/lib/supabase/client";
 import { streamSsePost } from "@/lib/stream-sse";
+import type { AtsScoreResult } from "@/types/ats-score";
 import type { Resume, UserProfile } from "@/types/database";
 import { cn } from "@/lib/utils";
 
@@ -230,31 +231,44 @@ export function TailorPage() {
     }
   };
 
-  const fetchAtsScores = async (before: string, after: string) => {
+  const scoreResume = async (resumeText: string): Promise<AtsScoreResult> => {
     const response = await fetch("/api/ats-score", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        jobDescription: jobDescription.trim(),
-        beforeResume: before,
-        afterResume: after,
+        resumeText,
+        jobDescription: jobDescription.trim() || undefined,
       }),
     });
 
+    const payload = (await response.json().catch(() => null)) as
+      | AtsScoreResult
+      | { error?: string; details?: string }
+      | null;
+
     if (!response.ok) {
-      const payload = (await response.json().catch(() => null)) as {
-        error?: string;
-      } | null;
-      throw new Error(payload?.error ?? "Failed to calculate ATS scores");
+      throw new Error(
+        payload && "error" in payload
+          ? `${payload.error}${payload.details ? `: ${payload.details}` : ""}`
+          : "Failed to calculate ATS score",
+      );
     }
 
-    const result = (await response.json()) as {
-      beforeScore: number;
-      afterScore: number;
-    };
+    if (!payload || !("overall_score" in payload)) {
+      throw new Error("Invalid ATS score response");
+    }
 
-    setAtsBeforeScore(result.beforeScore);
-    setAtsAfterScore(result.afterScore);
+    return payload;
+  };
+
+  const fetchAtsScores = async (before: string, after: string) => {
+    const [beforeResult, afterResult] = await Promise.all([
+      scoreResume(before),
+      scoreResume(after),
+    ]);
+
+    setAtsBeforeScore(beforeResult.overall_score);
+    setAtsAfterScore(afterResult.overall_score);
   };
 
   const handleTailor = async () => {
