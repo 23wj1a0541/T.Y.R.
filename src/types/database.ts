@@ -3,6 +3,7 @@ export type Plan = "free" | "pro";
 export type JobApplicationStatus =
   | "saved"
   | "applied"
+  | "screening"
   | "interview"
   | "offer"
   | "rejected"
@@ -103,6 +104,7 @@ export type JobApplication = {
   salary_range: string | null;
   applied_at: string | null;
   notes: string | null;
+  job_description?: string | null;
   created_at: string;
   updated_at: string;
 };

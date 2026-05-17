@@ -1,5 +1,5 @@
-import { PageStub } from "@/components/layout/PageStub";
+import { JobTrackerPage } from "@/components/tracker/job-tracker-page";
 
 export default function TrackerPage() {
-  return <PageStub title="Job Tracker" />;
+  return <JobTrackerPage />;
 }
