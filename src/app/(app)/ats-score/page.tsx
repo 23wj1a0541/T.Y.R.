@@ -1,5 +1,5 @@
-import { PageStub } from "@/components/layout/PageStub";
+import { AtsScorePage } from "@/components/ats-score/ats-score-page";
 
-export default function AtsScorePage() {
-  return <PageStub title="ATS Score" />;
+export default function AtsScoreRoutePage() {
+  return <AtsScorePage />;
 }
