@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { format } from "date-fns";
 import {
+  Copy,
   Download,
   FileText,
   GripVertical,
@@ -32,6 +33,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  compileLatexToPdfBlob,
+  downloadPdfBlob,
+  sanitizeResumeFilename,
+} from "@/lib/compile-latex";
 import { createClient } from "@/lib/supabase/client";
 import { createEmptyResumeContent } from "@/lib/resume-content";
 import {
@@ -76,8 +82,12 @@ export function ResumeEditor() {
   const [isDragging, setIsDragging] = useState(false);
 
   const [compiling, setCompiling] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [copying, setCopying] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadingResume, setLoadingResume] = useState(Boolean(resumeIdParam));
+
+  const isBusy = compiling || exporting || copying || saving;
 
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [lastCompiled, setLastCompiled] = useState<Date | null>(null);
@@ -195,33 +205,23 @@ export function ResumeEditor() {
     };
   }, [isDragging]);
 
+  const setPreviewFromBlob = useCallback((blob: Blob) => {
+    if (pdfUrlRef.current) {
+      URL.revokeObjectURL(pdfUrlRef.current);
+    }
+
+    const url = URL.createObjectURL(blob);
+    pdfUrlRef.current = url;
+    setPdfUrl(url);
+    setLastCompiled(new Date());
+  }, []);
+
   const handleCompile = async () => {
     setCompiling(true);
 
     try {
-      const response = await fetch("/api/compile-latex", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ latex: latexContent }),
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(payload?.error ?? "Compilation failed");
-      }
-
-      const blob = await response.blob();
-
-      if (pdfUrlRef.current) {
-        URL.revokeObjectURL(pdfUrlRef.current);
-      }
-
-      const url = URL.createObjectURL(blob);
-      pdfUrlRef.current = url;
-      setPdfUrl(url);
-      setLastCompiled(new Date());
+      const blob = await compileLatexToPdfBlob(latexContent);
+      setPreviewFromBlob(blob);
       toast.success("Resume compiled successfully");
     } catch (error) {
       const message =
@@ -232,16 +232,34 @@ export function ResumeEditor() {
     }
   };
 
-  const handleExportPdf = () => {
-    if (!pdfUrl) {
-      toast.error("Compile your resume first");
-      return;
-    }
+  const handleExportPdf = async () => {
+    setExporting(true);
 
-    const link = document.createElement("a");
-    link.href = pdfUrl;
-    link.download = `${resumeName.replace(/\s+/g, "-").toLowerCase() || "resume"}.pdf`;
-    link.click();
+    try {
+      const blob = await compileLatexToPdfBlob(latexContent);
+      downloadPdfBlob(blob, sanitizeResumeFilename(resumeName));
+      setPreviewFromBlob(blob);
+      toast.success("PDF downloaded");
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "PDF export failed";
+      toast.error(message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleCopyLatex = async () => {
+    setCopying(true);
+
+    try {
+      await navigator.clipboard.writeText(latexContent);
+      toast.success("LaTeX copied to clipboard");
+    } catch {
+      toast.error("Failed to copy LaTeX to clipboard");
+    } finally {
+      setCopying(false);
+    }
   };
 
   const handleSave = async () => {
@@ -334,7 +352,11 @@ export function ResumeEditor() {
           style={{ width: `${leftPanelPercent}%` }}
         >
           <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2">
-            <Select value={selectedTemplate} onValueChange={handleTemplateChange}>
+            <Select
+              value={selectedTemplate}
+              onValueChange={handleTemplateChange}
+              disabled={isBusy}
+            >
               <SelectTrigger className="w-[140px] bg-white" size="sm">
                 <SelectValue placeholder="Template" />
               </SelectTrigger>
@@ -347,16 +369,35 @@ export function ResumeEditor() {
               </SelectContent>
             </Select>
 
-            <Button variant="outline" size="sm" onClick={handleLoadMyInfo}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleLoadMyInfo}
+              disabled={isBusy}
+            >
               <User className="size-3.5" />
               Load My Info
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCopyLatex}
+              disabled={isBusy}
+            >
+              {copying ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Copy className="size-3.5" />
+              )}
+              Copy LaTeX
             </Button>
 
             <Button
               size="sm"
               className="bg-violet-600 hover:bg-violet-700"
               onClick={handleSave}
-              disabled={saving}
+              disabled={isBusy}
             >
               {saving ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -416,7 +457,7 @@ export function ResumeEditor() {
               size="sm"
               className="bg-violet-600 hover:bg-violet-700"
               onClick={handleCompile}
-              disabled={compiling}
+              disabled={isBusy}
             >
               {compiling ? (
                 <Loader2 className="size-3.5 animate-spin" />
@@ -430,9 +471,13 @@ export function ResumeEditor() {
               variant="outline"
               size="sm"
               onClick={handleExportPdf}
-              disabled={!pdfUrl}
+              disabled={isBusy}
             >
-              <Download className="size-3.5" />
+              {exporting ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Download className="size-3.5" />
+              )}
               Export PDF
             </Button>
 

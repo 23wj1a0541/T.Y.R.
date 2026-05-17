@@ -4,7 +4,23 @@ const LATEX_ONLINE_URL = "https://latexonline.cc/compile";
 
 export async function POST(request: Request) {
   try {
-    const { latex } = (await request.json()) as { latex?: string };
+    const contentType = request.headers.get("content-type") ?? "";
+    let latex: string | undefined;
+
+    if (contentType.includes("application/json")) {
+      const body = (await request.json()) as { latex?: string };
+      latex = body.latex;
+    } else if (
+      contentType.includes("text/plain") ||
+      contentType.includes("application/x-tex")
+    ) {
+      latex = await request.text();
+    } else {
+      const body = (await request.json().catch(() => null)) as {
+        latex?: string;
+      } | null;
+      latex = body?.latex;
+    }
 
     if (!latex?.trim()) {
       return NextResponse.json(
