@@ -9,7 +9,6 @@ import {
   Download,
   FileText,
   Loader2,
-  Mail,
   Save,
   Sparkles,
 } from "lucide-react";
@@ -120,6 +119,10 @@ export function TailorPage() {
 
   const selectedResume = savedResumes.find((r) => r.id === selectedResumeId);
   const isComplete = tailoredResumeLatex.length > 0 && !isProcessing;
+  const scoresVerified =
+    atsBeforeScore !== null && atsAfterScore !== null;
+  const coverLetterReady = isComplete && scoresVerified;
+  const hasCoverLetterText = generatedCoverLetter.trim().length > 0;
   const showJdInsights = Boolean(jdAnalysis);
   const isBusy =
     isProcessing ||
@@ -453,6 +456,31 @@ export function TailorPage() {
     }
   };
 
+  const parseSseLine = (
+    line: string,
+    onText: (chunk: string) => void,
+  ): void => {
+    if (!line.startsWith("data: ")) return;
+
+    const data = line.slice(6).trim();
+    if (!data || data === "[DONE]") return;
+
+    let parsed: { text?: string; error?: string };
+    try {
+      parsed = JSON.parse(data) as { text?: string; error?: string };
+    } catch {
+      return;
+    }
+
+    if (parsed.error) {
+      throw new Error(parsed.error);
+    }
+
+    if (parsed.text) {
+      onText(parsed.text);
+    }
+  };
+
   const handleGenerateCoverLetter = async () => {
     if (!jobDescription.trim()) {
       toast.error("Paste a job description first");
@@ -474,21 +502,57 @@ export function TailorPage() {
         sanitizeGeneratedLatex(tailoredResumeLatex),
       );
 
-      let accumulated = "";
-
-      await streamSsePost(
-        "/api/cover-letter",
-        {
+      const response = await fetch("/api/cover-letter", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           resumeText,
           jobDescription: jobDescription.trim(),
           userProfile,
           tone: selectedTone,
-        },
-        (chunk) => {
+        }),
+      });
+
+      if (!response.ok) {
+        const errorPayload = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        throw new Error(
+          errorPayload?.error ?? "Cover letter generation failed",
+        );
+      }
+
+      if (!response.body) {
+        throw new Error("No response stream received from the server");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let accumulated = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          parseSseLine(line, (chunk) => {
+            accumulated += chunk;
+            setGeneratedCoverLetter(accumulated);
+          });
+        }
+      }
+
+      if (buffer.startsWith("data: ")) {
+        parseSseLine(buffer, (chunk) => {
           accumulated += chunk;
           setGeneratedCoverLetter(accumulated);
-        },
-      );
+        });
+      }
 
       if (!accumulated.trim()) {
         throw new Error("Cover letter generation returned empty content");
@@ -499,6 +563,7 @@ export function TailorPage() {
       const message =
         error instanceof Error ? error.message : "Cover letter generation failed";
       toast.error(message);
+      setGeneratedCoverLetter("");
     } finally {
       setIsLetterStreaming(false);
     }
@@ -814,8 +879,9 @@ export function TailorPage() {
               )}
 
               {isComplete && (
-                <div className="flex flex-wrap gap-2">
-                  <Button
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Button
                     className="bg-violet-600 hover:bg-violet-700"
                     size="sm"
                     onClick={handleOpenInEditor}
@@ -854,16 +920,18 @@ export function TailorPage() {
                     )}
                     Save as New Version
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={openCoverLetterModal}
-                    disabled={isBusy}
-                    className="border-violet-200 text-violet-700 hover:bg-violet-50"
-                  >
-                    <Mail className="size-3.5" />
-                    Generate Cover Letter
-                  </Button>
+                  </div>
+                  {coverLetterReady && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={openCoverLetterModal}
+                      disabled={isBusy}
+                      className="w-full sm:w-auto"
+                    >
+                      Generate Cover Letter ✨
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
@@ -873,27 +941,31 @@ export function TailorPage() {
 
       <Dialog
         open={isCoverLetterModalOpen}
-        onOpenChange={setIsCoverLetterModalOpen}
+        onOpenChange={(open) => {
+          if (!isLetterStreaming) {
+            setIsCoverLetterModalOpen(open);
+          }
+        }}
       >
         <DialogContent className="flex max-h-[90vh] flex-col gap-0 overflow-hidden sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Generate Cover Letter</DialogTitle>
+            <DialogTitle>AI-Powered Cover Letter Generator</DialogTitle>
             <DialogDescription>
-              Personalized to your tailored resume, job description, and profile.
-              Choose a tone and generate.
+              Draft a persuasive, role-specific letter from your tailored resume,
+              job description, and profile. Pick a tone, then generate.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex flex-col gap-4 overflow-y-auto py-2">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto py-2">
             <div className="space-y-2">
-              <Label>Copywriting tone</Label>
+              <Label htmlFor="cover-letter-tone">Tone</Label>
               <Select
                 value={selectedTone}
                 onValueChange={setSelectedTone}
                 disabled={isLetterStreaming}
               >
-                <SelectTrigger>
-                  <SelectValue />
+                <SelectTrigger id="cover-letter-tone">
+                  <SelectValue placeholder="Select tone" />
                 </SelectTrigger>
                 <SelectContent>
                   {COVER_LETTER_TONES.map((tone) => (
@@ -905,51 +977,65 @@ export function TailorPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="cover-letter-output">Cover letter</Label>
+            <Button
+              type="button"
+              onClick={() => void handleGenerateCoverLetter()}
+              disabled={isLetterStreaming}
+              className="w-full gap-2 bg-violet-600 hover:bg-violet-700"
+            >
+              {isLetterStreaming ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Generating letter…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="size-4" />
+                  Generate Letter
+                </>
+              )}
+            </Button>
+
+            <div className="min-h-0 flex-1 space-y-2">
+              <Label htmlFor="cover-letter-output" className="sr-only">
+                Cover letter output
+              </Label>
               <Textarea
                 id="cover-letter-output"
+                rows={12}
                 value={generatedCoverLetter}
                 onChange={(e) => setGeneratedCoverLetter(e.target.value)}
-                placeholder={
-                  isLetterStreaming
-                    ? "Writing your cover letter…"
-                    : "Click Generate to draft your letter"
-                }
-                className="min-h-[320px] resize-y leading-relaxed"
+                disabled={isLetterStreaming}
+                placeholder="Your AI-generated cover letter will stream here. Click Generate Letter to begin."
+                className={cn(
+                  "min-h-[280px] flex-1 resize-y leading-relaxed",
+                  !hasCoverLetterText &&
+                    !isLetterStreaming &&
+                    "text-muted-foreground placeholder:text-slate-400",
+                )}
                 readOnly={isLetterStreaming}
               />
             </div>
           </div>
 
-          <DialogFooter className="gap-2 border-t pt-4 sm:gap-0">
-            <Button
-              variant="outline"
-              onClick={() => void handleCopyCoverLetter()}
-              disabled={!generatedCoverLetter.trim() || isLetterStreaming}
-              className="gap-2"
-            >
-              <ClipboardCopy className="size-4" />
-              Copy
-            </Button>
-            <Button
-              onClick={() => void handleGenerateCoverLetter()}
-              disabled={isLetterStreaming}
-              className="gap-2 bg-violet-600 hover:bg-violet-700"
-            >
-              {isLetterStreaming ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  Generating…
-                </>
-              ) : (
-                <>
-                  <Sparkles className="size-4" />
-                  {generatedCoverLetter ? "Regenerate" : "Generate"}
-                </>
-              )}
-            </Button>
-          </DialogFooter>
+          {hasCoverLetterText && !isLetterStreaming && (
+            <DialogFooter className="gap-2 border-t bg-slate-50/80 pt-4 sm:justify-between">
+              <Button
+                variant="outline"
+                onClick={() => setIsCoverLetterModalOpen(false)}
+              >
+                Close Window
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => void handleCopyCoverLetter()}
+                className="gap-2"
+              >
+                <ClipboardCopy className="size-4" />
+                Copy to Clipboard
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
 
