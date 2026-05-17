@@ -15,6 +15,8 @@ import {
 import toast from "react-hot-toast";
 
 import { LatexDiffView } from "@/components/tailor/latex-diff-view";
+import { SkillsGapDashboard } from "@/components/tailor/skills-gap-dashboard";
+import { SkillsGapSkeleton } from "@/components/tailor/skills-gap-skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -48,6 +50,7 @@ import { sanitizeGeneratedLatex } from "@/lib/sanitize-latex";
 import { createClient } from "@/lib/supabase/client";
 import { streamSsePost } from "@/lib/stream-sse";
 import type { AtsScoreResult } from "@/types/ats-score";
+import type { SkillsGapResult } from "@/types/skills-gap";
 import type { Resume, UserProfile } from "@/types/database";
 import { cn } from "@/lib/utils";
 
@@ -117,12 +120,19 @@ export function TailorPage() {
   const [generatedCoverLetter, setGeneratedCoverLetter] = useState("");
   const [isLetterStreaming, setIsLetterStreaming] = useState(false);
 
+  const [skillsGapData, setSkillsGapData] = useState<SkillsGapResult | null>(
+    null,
+  );
+  const [isSkillsGapLoading, setIsSkillsGapLoading] = useState(false);
+
   const selectedResume = savedResumes.find((r) => r.id === selectedResumeId);
   const isComplete = tailoredResumeLatex.length > 0 && !isProcessing;
   const scoresVerified =
     atsBeforeScore !== null && atsAfterScore !== null;
   const coverLetterReady = isComplete && scoresVerified;
   const hasCoverLetterText = generatedCoverLetter.trim().length > 0;
+  const showSkillsGapSection =
+    isComplete && (isSkillsGapLoading || skillsGapData !== null);
   const showJdInsights = Boolean(jdAnalysis);
   const isBusy =
     isProcessing ||
@@ -297,6 +307,50 @@ export function TailorPage() {
     setAtsAfterScore(afterResult.overall_score);
   };
 
+  const fetchSkillsGap = async (resumeText: string) => {
+    setIsSkillsGapLoading(true);
+    setSkillsGapData(null);
+
+    try {
+      const response = await fetch("/api/skills-gap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          resumeText,
+          jobDescription: jobDescription.trim(),
+        }),
+      });
+
+      const payload = (await response.json().catch(() => null)) as
+        | SkillsGapResult
+        | { error?: string; details?: string }
+        | null;
+
+      if (!response.ok) {
+        const message =
+          payload && "error" in payload
+            ? `${payload.error}${payload.details ? `: ${payload.details}` : ""}`
+            : "Skills gap analysis failed";
+        throw new Error(message);
+      }
+
+      if (!payload || !("match_percentage" in payload)) {
+        throw new Error("Invalid skills gap response from server");
+      }
+
+      setSkillsGapData(payload);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Skills gap analysis could not be completed";
+      toast.error(message);
+      setSkillsGapData(null);
+    } finally {
+      setIsSkillsGapLoading(false);
+    }
+  };
+
   const handleTailor = async () => {
     if (!jobDescription.trim()) {
       toast.error("Please paste a job description");
@@ -312,6 +366,7 @@ export function TailorPage() {
     setTailoredResumeLatex("");
     setAtsBeforeScore(null);
     setAtsAfterScore(null);
+    setSkillsGapData(null);
     const beforeLatex = sanitizeGeneratedLatex(currentResumeLatex);
 
     try {
@@ -348,12 +403,14 @@ export function TailorPage() {
       }
 
       await fetchAtsScores(beforeLatex, finalLatex);
+      await fetchSkillsGap(finalLatex);
       toast.success("Resume tailored for this job");
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Tailoring failed";
       toast.error(message);
       setTailoredResumeLatex("");
+      setSkillsGapData(null);
     } finally {
       setIsProcessing(false);
     }
@@ -937,6 +994,16 @@ export function TailorPage() {
             </div>
           </div>
         </div>
+
+        {showSkillsGapSection && (
+          <div className="mt-6 w-full">
+            {isSkillsGapLoading ? (
+              <SkillsGapSkeleton />
+            ) : (
+              skillsGapData && <SkillsGapDashboard data={skillsGapData} />
+            )}
+          </div>
+        )}
       </div>
 
       <Dialog

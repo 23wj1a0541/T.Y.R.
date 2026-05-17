@@ -3,9 +3,13 @@ import { cn } from "@/lib/utils";
 
 type ScoreRingProps = {
   score: number;
+  footerLabel?: string;
 };
 
-export function ScoreRing({ score }: ScoreRingProps) {
+export function ScoreRing({
+  score,
+  footerLabel = "AI-Powered ATS Score by Tailor Your Resume",
+}: ScoreRingProps) {
   const meta = getOverallScoreMeta(score);
   const radius = 70;
   const circumference = 2 * Math.PI * radius;
@@ -49,9 +53,7 @@ export function ScoreRing({ score }: ScoreRingProps) {
           </span>
         </div>
       </div>
-      <p className="mt-4 text-sm text-slate-500">
-        AI-Powered ATS Score by Tailor Your Resume
-      </p>
+      <p className="mt-4 text-center text-sm text-slate-500">{footerLabel}</p>
     </div>
   );
 }
